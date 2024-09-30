@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime
 import time
 from textblob import TextBlob
+import re
 
 # Configuration
 st.set_page_config(page_title="Crypto Project Tracker", layout="wide")
@@ -25,6 +26,10 @@ try:
 except Exception as e:
     st.sidebar.error(f"Failed to connect to Reddit API: {str(e)}")
     reddit = None
+
+def extract_tokens(text):
+    tokens = re.findall(r'\b[A-Z]{2,10}\b', text)
+    return [token for token in tokens if token not in ['NFT', 'DeFi', 'CEO', 'ICO', 'AMA']]
 
 def analyze_sentiment(text):
     analysis = TextBlob(text)
@@ -46,6 +51,7 @@ def fetch_reddit_posts(subreddit_name, limit=10):
         posts = []
         for post in subreddit.new(limit=limit):
             sentiment, score = analyze_sentiment(post.title + " " + post.selftext)
+            tokens = extract_tokens(post.title + " " + post.selftext)
             posts.append({
                 "title": post.title,
                 "url": post.url,
@@ -55,7 +61,8 @@ def fetch_reddit_posts(subreddit_name, limit=10):
                 "upvote_ratio": post.upvote_ratio,
                 "num_comments": post.num_comments,
                 "sentiment": sentiment,
-                "sentiment_score": score
+                "sentiment_score": score,
+                "tokens": tokens
             })
         return posts
     except prawcore.exceptions.Forbidden:
@@ -82,6 +89,7 @@ def fetch_4chan_posts(board, limit=10):
             for thread in page['threads']:
                 if 'com' in thread:
                     sentiment, score = analyze_sentiment(thread['com'])
+                    tokens = extract_tokens(thread['com'])
                     posts.append({
                         "title": thread['com'][:100] + "...",
                         "url": f"https://boards.4chan.org/{board}/thread/{thread['no']}",
@@ -89,7 +97,8 @@ def fetch_4chan_posts(board, limit=10):
                         "created_utc": datetime.fromtimestamp(thread['time']),
                         "source": f"4chan - /{board}/",
                         "sentiment": sentiment,
-                        "sentiment_score": score
+                        "sentiment_score": score,
+                        "tokens": tokens
                     })
                 if len(posts) >= limit:
                     break
@@ -138,6 +147,26 @@ def main():
         # Sort posts by creation date
         st.session_state.all_posts.sort(key=lambda x: x['created_utc'], reverse=True)
 
+        # Calculate token sentiment scores
+        token_sentiments = {}
+        for post in st.session_state.all_posts:
+            for token in post['tokens']:
+                if token not in token_sentiments:
+                    token_sentiments[token] = []
+                token_sentiments[token].append(post['sentiment_score'])
+
+        # Calculate average sentiment for each token
+        token_avg_sentiments = {token: sum(scores) / len(scores) for token, scores in token_sentiments.items()}
+
+        # Sort tokens by average sentiment score
+        sorted_tokens = sorted(token_avg_sentiments.items(), key=lambda x: x[1], reverse=True)
+
+        # Display top 20 tokens
+        st.subheader("Top 20 Tokens by Sentiment Score")
+        top_20_tokens = sorted_tokens[:20]
+        token_df = pd.DataFrame(top_20_tokens, columns=['Token', 'Average Sentiment Score'])
+        st.table(token_df)
+
     # Display posts
     if st.session_state.all_posts:
         st.subheader("Latest Crypto Projects with Sentiment Analysis")
@@ -179,13 +208,14 @@ def main():
                 st.markdown(f"**Upvote Ratio:** {selected_post['upvote_ratio']:.2f}")
             if 'num_comments' in selected_post:
                 st.markdown(f"**Number of Comments:** {selected_post['num_comments']}")
+            st.markdown(f"**Tokens Mentioned:** {', '.join(selected_post['tokens'])}")
             st.markdown(f"**URL:** [{selected_post['url']}]({selected_post['url']})")
 
         # Token search and sentiment analysis
         st.subheader("Token Sentiment Analysis")
         token_name = st.text_input("Enter a token name to analyze sentiment:")
         if token_name:
-            token_posts = [post for post in st.session_state.all_posts if token_name.lower() in post['title'].lower()]
+            token_posts = [post for post in st.session_state.all_posts if token_name.upper() in post['tokens']]
             if token_posts:
                 token_df = pd.DataFrame(token_posts)
                 st.write(f"Posts mentioning {token_name}:")
