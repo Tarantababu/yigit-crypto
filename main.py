@@ -123,8 +123,32 @@ def create_markdown_table(data):
     
     return markdown
 
+def evaluate_token(token_data):
+    total_mentions = len(token_data['posts'])
+    total_score = sum(post['score'] for post in token_data['posts'])
+    avg_sentiment = token_data['avg_sentiment']
+    
+    # Criteria for a promising token
+    min_mentions = 3
+    min_total_score = 10
+    min_avg_sentiment = 0.2
+    
+    is_promising = (
+        total_mentions >= min_mentions and
+        total_score >= min_total_score and
+        avg_sentiment >= min_avg_sentiment
+    )
+    
+    confidence_score = (
+        (total_mentions / min_mentions) *
+        (total_score / min_total_score) *
+        (avg_sentiment / min_avg_sentiment)
+    ) if is_promising else 0
+    
+    return is_promising, confidence_score
+
 def main():
-    st.title("Crypto Project Tracker with Weighted Sentiment Analysis")
+    st.title("Crypto Project Tracker with Smart Token Evaluation")
 
     # Sidebar for user input
     st.sidebar.header("Data Sources")
@@ -170,31 +194,39 @@ def main():
                     token_sentiments[token] = {'total_score': 0, 'total_weight': 0, 'posts': []}
                 token_sentiments[token]['total_score'] += post['sentiment_score'] * weight
                 token_sentiments[token]['total_weight'] += weight
-                token_sentiments[token]['posts'].append((post['url'], post['sentiment_score']))
+                token_sentiments[token]['posts'].append(post)
 
-        # Calculate weighted average sentiment for each token
-        token_avg_sentiments = {}
+        # Calculate weighted average sentiment and evaluate each token
+        token_evaluations = {}
         for token, data in token_sentiments.items():
             avg_sentiment = data['total_score'] / data['total_weight']
-            token_avg_sentiments[token] = {
+            is_promising, confidence_score = evaluate_token({
                 'avg_sentiment': avg_sentiment,
-                'posts': sorted(data['posts'], key=lambda x: x[1], reverse=True)[:3]  # Top 3 posts by sentiment
+                'posts': data['posts']
+            })
+            token_evaluations[token] = {
+                'avg_sentiment': avg_sentiment,
+                'is_promising': is_promising,
+                'confidence_score': confidence_score,
+                'posts': sorted(data['posts'], key=lambda x: x['sentiment_score'], reverse=True)[:3]  # Top 3 posts by sentiment
             }
 
-        # Sort tokens by average sentiment score
-        sorted_tokens = sorted(token_avg_sentiments.items(), key=lambda x: x[1]['avg_sentiment'], reverse=True)
+        # Sort tokens by confidence score
+        sorted_tokens = sorted(token_evaluations.items(), key=lambda x: x[1]['confidence_score'], reverse=True)
 
-        # Display top 20 tokens with links
-        st.subheader("Top 20 Tokens by Weighted Sentiment Score")
-        top_20_tokens = sorted_tokens[:20]
+        # Display top 20 promising tokens with links
+        st.subheader("Top 20 Promising Tokens by Confidence Score")
+        top_20_tokens = [token for token in sorted_tokens if token[1]['is_promising']][:20]
         token_data = []
         for token, data in top_20_tokens:
-            post_links = " ".join([f"[Link {i+1}]({url})" for i, (url, _) in enumerate(data['posts'])])
+            post_links = " ".join([f"[Link {i+1}]({post['url']})" for i, post in enumerate(data['posts'][:3])])
             coingecko_link = get_coingecko_link(token)
             coingecko_text = f"[CoinGecko]({coingecko_link})" if coingecko_link else "N/A"
             token_data.append({
                 'Token': token,
-                'Average Sentiment Score': f"{data['avg_sentiment']:.4f}",
+                'Confidence Score': f"{data['confidence_score']:.2f}",
+                'Avg Sentiment': f"{data['avg_sentiment']:.2f}",
+                'Mentions': len(data['posts']),
                 'Top Posts': post_links,
                 'CoinGecko': coingecko_text
             })
