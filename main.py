@@ -65,15 +65,6 @@ def fetch_reddit_posts(subreddit_name, limit=10):
                 "tokens": tokens
             })
         return posts
-    except prawcore.exceptions.Forbidden:
-        st.warning(f"Access to r/{subreddit_name} is forbidden. Skipping this subreddit.")
-        return []
-    except prawcore.exceptions.NotFound:
-        st.warning(f"Subreddit r/{subreddit_name} not found. Skipping this subreddit.")
-        return []
-    except prawcore.exceptions.ServerError:
-        st.warning(f"Reddit server error when accessing r/{subreddit_name}. Skipping this subreddit.")
-        return []
     except Exception as e:
         st.error(f"An error occurred while fetching posts from r/{subreddit_name}: {str(e)}")
         return []
@@ -109,8 +100,18 @@ def fetch_4chan_posts(board, limit=10):
         st.error(f"An error occurred while fetching posts from 4chan /{board}/: {str(e)}")
         return []
 
+def get_coingecko_link(token):
+    try:
+        response = requests.get(f"https://api.coingecko.com/api/v3/search?query={token}")
+        data = response.json()
+        if data['coins']:
+            return f"https://www.coingecko.com/en/coins/{data['coins'][0]['id']}"
+    except:
+        pass
+    return None
+
 def main():
-    st.title("Crypto Project Tracker with Sentiment Analysis")
+    st.title("Crypto Project Tracker with Weighted Sentiment Analysis")
 
     # Sidebar for user input
     st.sidebar.header("Data Sources")
@@ -147,25 +148,45 @@ def main():
         # Sort posts by creation date
         st.session_state.all_posts.sort(key=lambda x: x['created_utc'], reverse=True)
 
-        # Calculate token sentiment scores
+        # Calculate weighted token sentiment scores
         token_sentiments = {}
         for post in st.session_state.all_posts:
+            weight = post['score'] + 1  # Add 1 to avoid zero weights
             for token in post['tokens']:
                 if token not in token_sentiments:
-                    token_sentiments[token] = []
-                token_sentiments[token].append(post['sentiment_score'])
+                    token_sentiments[token] = {'total_score': 0, 'total_weight': 0, 'posts': []}
+                token_sentiments[token]['total_score'] += post['sentiment_score'] * weight
+                token_sentiments[token]['total_weight'] += weight
+                token_sentiments[token]['posts'].append((post['url'], post['sentiment_score']))
 
-        # Calculate average sentiment for each token
-        token_avg_sentiments = {token: sum(scores) / len(scores) for token, scores in token_sentiments.items()}
+        # Calculate weighted average sentiment for each token
+        token_avg_sentiments = {}
+        for token, data in token_sentiments.items():
+            avg_sentiment = data['total_score'] / data['total_weight']
+            token_avg_sentiments[token] = {
+                'avg_sentiment': avg_sentiment,
+                'posts': sorted(data['posts'], key=lambda x: x[1], reverse=True)[:3]  # Top 3 posts by sentiment
+            }
 
         # Sort tokens by average sentiment score
-        sorted_tokens = sorted(token_avg_sentiments.items(), key=lambda x: x[1], reverse=True)
+        sorted_tokens = sorted(token_avg_sentiments.items(), key=lambda x: x[1]['avg_sentiment'], reverse=True)
 
-        # Display top 20 tokens
-        st.subheader("Top 20 Tokens by Sentiment Score")
+        # Display top 20 tokens with links
+        st.subheader("Top 20 Tokens by Weighted Sentiment Score")
         top_20_tokens = sorted_tokens[:20]
-        token_df = pd.DataFrame(top_20_tokens, columns=['Token', 'Average Sentiment Score'])
-        st.table(token_df)
+        token_data = []
+        for token, data in top_20_tokens:
+            post_links = " ".join([f"[Link {i+1}]({url})" for i, (url, _) in enumerate(data['posts'])])
+            coingecko_link = get_coingecko_link(token)
+            coingecko_text = f"[CoinGecko]({coingecko_link})" if coingecko_link else "N/A"
+            token_data.append({
+                'Token': token,
+                'Average Sentiment Score': f"{data['avg_sentiment']:.4f}",
+                'Top Posts': post_links,
+                'CoinGecko': coingecko_text
+            })
+        token_df = pd.DataFrame(token_data)
+        st.markdown(token_df.to_markdown(index=False), unsafe_allow_html=True)
 
     # Display posts
     if st.session_state.all_posts:
@@ -230,6 +251,10 @@ def main():
                     st.error(f"The overall sentiment for {token_name} is negative.")
                 else:
                     st.info(f"The overall sentiment for {token_name} is neutral.")
+                
+                coingecko_link = get_coingecko_link(token_name)
+                if coingecko_link:
+                    st.markdown(f"[View {token_name} on CoinGecko]({coingecko_link})")
             else:
                 st.warning(f"No posts found mentioning {token_name}.")
 
