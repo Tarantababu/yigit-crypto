@@ -110,6 +110,19 @@ def get_coingecko_link(token):
         pass
     return None
 
+def create_markdown_table(data):
+    if not data:
+        return "No data available"
+    
+    headers = data[0].keys()
+    markdown = "| " + " | ".join(headers) + " |\n"
+    markdown += "| " + " | ".join(["---" for _ in headers]) + " |\n"
+    
+    for row in data:
+        markdown += "| " + " | ".join([str(row[col]) for col in headers]) + " |\n"
+    
+    return markdown
+
 def main():
     st.title("Crypto Project Tracker with Weighted Sentiment Analysis")
 
@@ -185,8 +198,9 @@ def main():
                 'Top Posts': post_links,
                 'CoinGecko': coingecko_text
             })
-        token_df = pd.DataFrame(token_data)
-        st.markdown(token_df.to_markdown(index=False), unsafe_allow_html=True)
+        
+        markdown_table = create_markdown_table(token_data)
+        st.markdown(markdown_table, unsafe_allow_html=True)
 
     # Display posts
     if st.session_state.all_posts:
