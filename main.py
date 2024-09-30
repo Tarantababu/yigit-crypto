@@ -70,7 +70,13 @@ def main():
         st.session_state.all_posts = []
 
         if use_reddit:
-            reddit_subreddits = ["CryptoCurrency", "CryptoMoonShots", "Altcoin", "DeFi", "NFT", "ethtrader", "Bitcoin"]
+            reddit_subreddits = [
+                "CryptoCurrency", "CryptoMarkets", "Altcoin", "Bitcoin", "Ethereum", "NFT",
+                "CryptoMoonShots", "DeFi", "DefiDegens", "ethtrader", "Chainlink", "VeChain",
+                "CryptoTechnology", "CryptoGems", "CryptoInvesting", "CryptoTraders",
+                "cryptomoonshots", "cryptocommunity", "darknetmarkets", "Crypto_Startup",
+                "BitcoinBeginners", "Blockchain", "Crypto_Fraud", "ledger"
+            ]
             for subreddit in reddit_subreddits:
                 with st.spinner(f"Fetching posts from r/{subreddit}..."):
                     st.session_state.all_posts.extend(fetch_reddit_posts(subreddit))
