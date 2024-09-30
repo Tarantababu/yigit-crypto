@@ -1,8 +1,10 @@
 import streamlit as st
 import praw
+import prawcore
 import requests
 import pandas as pd
 from datetime import datetime
+import time
 
 # Configuration
 st.set_page_config(page_title="Crypto Project Tracker", layout="wide")
@@ -12,30 +14,53 @@ REDDIT_CLIENT_SECRET = "kmsYDJd8QJ1qSLUOZRS3HNbLBwXomA"
 REDDIT_USER_AGENT = "crypto_tracker:v1.0 (by /u/yourusername)"
 
 # Initialize Reddit API
-reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    user_agent=REDDIT_USER_AGENT
-)
+try:
+    reddit = praw.Reddit(
+        client_id=REDDIT_CLIENT_ID,
+        client_secret=REDDIT_CLIENT_SECRET,
+        user_agent=REDDIT_USER_AGENT
+    )
+    st.sidebar.success("Successfully connected to Reddit API")
+except Exception as e:
+    st.sidebar.error(f"Failed to connect to Reddit API: {str(e)}")
+    reddit = None
 
 def fetch_reddit_posts(subreddit_name, limit=10):
-    subreddit = reddit.subreddit(subreddit_name)
-    posts = []
-    for post in subreddit.new(limit=limit):
-        posts.append({
-            "title": post.title,
-            "url": post.url,
-            "score": post.score,
-            "created_utc": datetime.fromtimestamp(post.created_utc),
-            "source": f"Reddit - r/{subreddit_name}"
-        })
-    return posts
+    if reddit is None:
+        st.warning(f"Skipping r/{subreddit_name} due to Reddit API connection issues")
+        return []
+
+    try:
+        subreddit = reddit.subreddit(subreddit_name)
+        posts = []
+        for post in subreddit.new(limit=limit):
+            posts.append({
+                "title": post.title,
+                "url": post.url,
+                "score": post.score,
+                "created_utc": datetime.fromtimestamp(post.created_utc),
+                "source": f"Reddit - r/{subreddit_name}"
+            })
+        return posts
+    except prawcore.exceptions.Forbidden:
+        st.warning(f"Access to r/{subreddit_name} is forbidden. Skipping this subreddit.")
+        return []
+    except prawcore.exceptions.NotFound:
+        st.warning(f"Subreddit r/{subreddit_name} not found. Skipping this subreddit.")
+        return []
+    except prawcore.exceptions.ServerError:
+        st.warning(f"Reddit server error when accessing r/{subreddit_name}. Skipping this subreddit.")
+        return []
+    except Exception as e:
+        st.error(f"An error occurred while fetching posts from r/{subreddit_name}: {str(e)}")
+        return []
 
 def fetch_4chan_posts(board, limit=10):
     url = f"https://a.4cdn.org/{board}/catalog.json"
-    response = requests.get(url)
-    posts = []
-    if response.status_code == 200:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raises an HTTPError for bad requests
+        posts = []
         data = response.json()
         for page in data:
             for thread in page['threads']:
@@ -51,7 +76,10 @@ def fetch_4chan_posts(board, limit=10):
                     break
             if len(posts) >= limit:
                 break
-    return posts[:limit]
+        return posts[:limit]
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred while fetching posts from 4chan /{board}/: {str(e)}")
+        return []
 
 def main():
     st.title("Crypto Project Tracker")
@@ -69,7 +97,7 @@ def main():
     if st.button("Fetch New Crypto Projects"):
         st.session_state.all_posts = []
 
-        if use_reddit:
+        if use_reddit and reddit is not None:
             reddit_subreddits = [
                 "CryptoCurrency", "CryptoMarkets", "Altcoin", "Bitcoin", "Ethereum", "NFT",
                 "CryptoMoonShots", "DeFi", "DefiDegens", "ethtrader", "Chainlink", "VeChain",
@@ -80,6 +108,7 @@ def main():
             for subreddit in reddit_subreddits:
                 with st.spinner(f"Fetching posts from r/{subreddit}..."):
                     st.session_state.all_posts.extend(fetch_reddit_posts(subreddit))
+                time.sleep(2)  # Add a delay to avoid hitting rate limits
 
         if use_4chan:
             chan_boards = ["biz", "g"]
