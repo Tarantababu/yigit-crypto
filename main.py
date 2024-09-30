@@ -1,13 +1,10 @@
 import streamlit as st
 import praw
 import requests
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 
 # Configuration
-st.set_page_config(page_title="Crypto Project Tracker", layout="wide")
-
-# Reddit API credentials
 REDDIT_CLIENT_ID = "Pw30vnSKcyJ5Yp_LeHSLPA"
 REDDIT_CLIENT_SECRET = "kmsYDJd8QJ1qSLUOZRS3HNbLBwXomA"
 REDDIT_USER_AGENT = "crypto_tracker:v1.0 (by /u/yourusername)"
@@ -89,14 +86,19 @@ def main():
         st.dataframe(df[['title', 'source', 'score', 'created_utc']])
 
         # Allow user to select a post to view details
-        selected_index = st.selectbox("Select a post to view details:", df.index)
-        if selected_index is not None:
-            selected_post = df.loc[selected_index]
-            st.subheader(selected_post['title'])
-            st.write(f"Source: {selected_post['source']}")
-            st.write(f"Score: {selected_post['score']}")
-            st.write(f"Created: {selected_post['created_utc']}")
-            st.write(f"URL: {selected_post['url']}")
+        if not df.empty:
+            st.subheader("Post Details")
+            selected_title = st.selectbox("Select a post to view details:", df['title'].tolist())
+            
+            if selected_title:
+                selected_post = df[df['title'] == selected_title].iloc[0]
+                st.markdown(f"**Title:** {selected_post['title']}")
+                st.markdown(f"**Source:** {selected_post['source']}")
+                st.markdown(f"**Score:** {selected_post['score']}")
+                st.markdown(f"**Created:** {selected_post['created_utc']}")
+                st.markdown(f"**URL:** [{selected_post['url']}]({selected_post['url']})")
+        else:
+            st.warning("No posts were fetched. Try selecting different data sources or try again later.")
 
 if __name__ == "__main__":
     main()
