@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 
 # Configuration
+st.set_page_config(page_title="Crypto Project Tracker", layout="wide")
+
 REDDIT_CLIENT_ID = "Pw30vnSKcyJ5Yp_LeHSLPA"
 REDDIT_CLIENT_SECRET = "kmsYDJd8QJ1qSLUOZRS3HNbLBwXomA"
 REDDIT_USER_AGENT = "crypto_tracker:v1.0 (by /u/yourusername)"
@@ -59,46 +61,58 @@ def main():
     use_reddit = st.sidebar.checkbox("Reddit", value=True)
     use_4chan = st.sidebar.checkbox("4chan", value=True)
 
+    # Initialize session state
+    if 'all_posts' not in st.session_state:
+        st.session_state.all_posts = []
+
     # Main content
     if st.button("Fetch New Crypto Projects"):
-        all_posts = []
+        st.session_state.all_posts = []
 
         if use_reddit:
             reddit_subreddits = ["CryptoCurrency", "CryptoMoonShots", "Altcoin", "DeFi", "NFT", "ethtrader", "Bitcoin"]
             for subreddit in reddit_subreddits:
                 with st.spinner(f"Fetching posts from r/{subreddit}..."):
-                    all_posts.extend(fetch_reddit_posts(subreddit))
+                    st.session_state.all_posts.extend(fetch_reddit_posts(subreddit))
 
         if use_4chan:
             chan_boards = ["biz", "g"]
             for board in chan_boards:
                 with st.spinner(f"Fetching posts from 4chan /{board}/..."):
-                    all_posts.extend(fetch_4chan_posts(board))
+                    st.session_state.all_posts.extend(fetch_4chan_posts(board))
 
         # Sort posts by creation date
-        all_posts.sort(key=lambda x: x['created_utc'], reverse=True)
+        st.session_state.all_posts.sort(key=lambda x: x['created_utc'], reverse=True)
 
-        # Convert to DataFrame for easier manipulation
-        df = pd.DataFrame(all_posts)
-
-        # Display posts
+    # Display posts
+    if st.session_state.all_posts:
         st.subheader("Latest Crypto Projects")
+        df = pd.DataFrame(st.session_state.all_posts)
         st.dataframe(df[['title', 'source', 'score', 'created_utc']])
 
+        # Debug information
+        st.write(f"Number of posts: {len(st.session_state.all_posts)}")
+
         # Allow user to select a post to view details
-        if not df.empty:
-            st.subheader("Post Details")
-            selected_title = st.selectbox("Select a post to view details:", df['title'].tolist())
-            
-            if selected_title:
-                selected_post = df[df['title'] == selected_title].iloc[0]
-                st.markdown(f"**Title:** {selected_post['title']}")
-                st.markdown(f"**Source:** {selected_post['source']}")
-                st.markdown(f"**Score:** {selected_post['score']}")
-                st.markdown(f"**Created:** {selected_post['created_utc']}")
-                st.markdown(f"**URL:** [{selected_post['url']}]({selected_post['url']})")
-        else:
-            st.warning("No posts were fetched. Try selecting different data sources or try again later.")
+        st.subheader("Post Details")
+        selected_index = st.selectbox(
+            "Select a post to view details:",
+            options=range(len(st.session_state.all_posts)),
+            format_func=lambda i: st.session_state.all_posts[i]['title'][:50] + "..."
+        )
+
+        # Debug information
+        st.write(f"Selected index: {selected_index}")
+
+        if selected_index is not None:
+            selected_post = st.session_state.all_posts[selected_index]
+            st.markdown(f"**Title:** {selected_post['title']}")
+            st.markdown(f"**Source:** {selected_post['source']}")
+            st.markdown(f"**Score:** {selected_post['score']}")
+            st.markdown(f"**Created:** {selected_post['created_utc']}")
+            st.markdown(f"**URL:** [{selected_post['url']}]({selected_post['url']})")
+    else:
+        st.warning("No posts fetched yet. Click 'Fetch New Crypto Projects' to load posts.")
 
 if __name__ == "__main__":
     main()
